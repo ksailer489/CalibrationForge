@@ -32,15 +32,22 @@ internal static class Program
         try
         {
             var table = new Unsigned16Table("Synthetic smoke matrix — not a vehicle calibration", 4, 33, 17, 1, 128, "demo");
-            var bytes = new byte[4 + table.ByteLength];
+            var fuel = new Unsigned16Table("Synthetic fuel reference", table.Offset + table.ByteLength + 2, 3, 1, 1, 2048, "AFR",
+                headerKind: TableHeaderKind.Count);
+            var bytes = new byte[fuel.Offset + fuel.ByteLength];
             BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(0), 17);
             BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(2), 33);
             for (var index = 0; index < 33 * 17; index++)
             {
                 BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(4 + index * 2), 128);
             }
+            BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(fuel.Offset - 2), 3);
+            for (var index = 0; index < 3; index++)
+            {
+                BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(fuel.Offset + index * 2), (ushort)((14 - index) * 2048));
+            }
             var profile = new ExperimentalBinProfile("Independent synthetic smoke fixture", bytes.Length,
-                Convert.ToHexString(SHA256.HashData(bytes)), table);
+                Convert.ToHexString(SHA256.HashData(bytes)), table, additionalTables: [fuel]);
             window = new MainWindow(new BinWorkspace(profile))
             {
                 ShowInTaskbar = false, ShowActivated = false,
@@ -81,6 +88,30 @@ internal static class Program
             Check(bin.SelectedCell.Current == 1 && bin.CanRedo, "undo actual button binding");
             Click(window, "BinRedo");
             Check(bin.SelectedCell.Current == 2 && bin.CanUndo, "redo actual button binding");
+            var tableSelector = Find<ComboBox>(window, "BinTableSelector");
+            Check(tableSelector.Items.Count == 2 && tableSelector.IsEnabled, "multiple table selector populated");
+            tableSelector.SelectedItem = fuel;
+            Pump(window);
+            Check(matrix.Items.Count == 3 && matrix.Columns.Count == 1 && bin.SelectedCell is null, "table selection rebuilds matrix and clears stale cell");
+            matrix.SelectedCells.Add(new DataGridCellInfo(matrix.Items[1], matrix.Columns[0]));
+            Pump(window);
+            var additionalEdits = Find<CheckBox>(window, "BinAdditionalTableEdits");
+            Check(additionalEdits.IsChecked == false && !input.IsEnabled, "additional table editing is opt-in");
+            additionalEdits.IsChecked = true;
+            Pump(window);
+            input.Text = "12";
+            input.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
+            Click(window, "BinApplyButton");
+            Check(bin.ChangeCount == 2 && bin.SelectedCell!.Current == 12, "second table edit preserves hidden first-table edit");
+            additionalEdits.IsChecked = false;
+            Pump(window);
+            Check(!input.IsEnabled && bin.ChangeCount == 2 && bin.CanExport, "disabling additional edits preserves reviewable changes");
+            tableSelector.SelectedItem = table;
+            Pump(window);
+            Click(window, "BinUndo");
+            Check(bin.ChangeCount == 1, "global undo updates hidden table");
+            Click(window, "BinRedo");
+            Check(bin.ChangeCount == 2, "global redo updates hidden table");
             Check(IsDark(matrix.Background) && IsDark(matrix.RowBackground), "shared dark matrix theme");
             CaptureSizes(window, args, "bin", () =>
             {
@@ -95,13 +126,23 @@ internal static class Program
             };
             review.Show();
             Pump(review);
-            Check(Find<DataGrid>(review, "BinExportReviewGrid").Items.Count == 1, "export comparison populated");
+            Check(Find<DataGrid>(review, "BinExportReviewGrid").Items.Count == 2, "export comparison includes hidden table changes");
             Check(IsDark(Find<DataGrid>(review, "BinExportReviewGrid").RowBackground), "export review uses dark theme");
             review.Close();
             Wait(bin.ExportFileAsync(Path.Combine(directory, "edited.bin")), window);
             Check(File.ReadAllBytes(source).SequenceEqual(bytes) && !bin.HasUnsavedChanges, "export preserves source and saved baseline");
             bin.RevertAll();
             bin.Load(source, bytes, true);
+            tableSelector.SelectedItem = fuel;
+            Pump(window);
+            bin.Load(Path.Combine(directory, "unknown.bin"), new byte[8], false);
+            Pump(window);
+            Check(tableSelector.Items.Count == 0 && bin.SelectedTable is null && matrix.Items.Count == 0,
+                "unknown load clears table selector, selection and matrix");
+            bin.Load(source, bytes, false);
+            Pump(window);
+            Check(matrix.Columns.Count == 17 && additionalEdits.IsChecked == false,
+                "recognized reload restores primary table with additional editing disabled");
 
             SelectTab(tabs, "DiagnosticsTab", window);
             var feature = Find<CheckBox>(window, "DiagnosticsFeatureSwitch");

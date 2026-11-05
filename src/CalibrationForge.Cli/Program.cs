@@ -192,14 +192,18 @@ static async Task<int> HandleInspectAsync(string path)
         Console.WriteLine($"Profile: {image.Profile?.Name ?? "Unknown / read-only"}");
         if (image.Profile is { } profile)
         {
-            var table = profile.Table;
-            var values = Enumerable.Range(0, table.Rows).SelectMany(row =>
-                Enumerable.Range(0, table.Columns).Select(column => image.Read(row, column))).ToArray();
             Console.WriteLine("Exact original hash, size, header and segment metadata matched; NOT GM-verified.");
-            Console.WriteLine($"{table.Name}: {table.Rows}x{table.Columns}, offset 0x{table.Offset:X}, BE u16 / 128");
-            Console.WriteLine(FormattableString.Invariant($"Range: {values.Min()}..{values.Max()} experimental ms; [12,0]={image.Read(12, 0)}"));
+            foreach (var table in profile.Tables)
+            {
+                var values = Enumerable.Range(0, table.Rows).SelectMany(row =>
+                    Enumerable.Range(0, table.Columns).Select(column => image.Read(table, row, column))).ToArray();
+                Console.WriteLine($"{table.Name}: {table.Rows}x{table.Columns}, offset 0x{table.Offset:X}, BE u16 * {table.Numerator} / {table.Denominator}");
+                Console.WriteLine(FormattableString.Invariant($"Range: {values.Min()}..{values.Max()} experimental {table.Unit}"));
+                Console.WriteLine(table.Description);
+                Console.WriteLine(table.AxisQualification);
+            }
             Console.WriteLine(ExperimentalBinProfile.Attribution);
-            Console.WriteLine("Vehicle provenance unknown; not a verified 2017 Camaro calibration. Row/column indices only.");
+            Console.WriteLine("Vehicle provenance unknown; not a verified 2017 Camaro calibration.");
         }
 
         Console.WriteLine("Checksums NOT validated or updated. Edited exports reopen read-only. NOT flash-ready.");

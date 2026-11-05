@@ -2,11 +2,13 @@ using System.Buffers.Binary;
 
 namespace CalibrationForge.Core;
 
+public enum TableHeaderKind { Dimensions, Count }
+
 public sealed class Unsigned16Table
 {
     public Unsigned16Table(string name, int offset, int rows, int columns, int numerator, int denominator, string unit,
         TableAxis? rowAxis = null, TableAxis? columnAxis = null, string description = "", string valueName = "Cell value",
-        string axisQualification = "")
+        string axisQualification = "", TableHeaderKind headerKind = TableHeaderKind.Dimensions)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (offset < 0 || rows <= 0 || columns <= 0 || numerator <= 0 || denominator <= 0)
@@ -15,6 +17,10 @@ public sealed class Unsigned16Table
         }
         if (rowAxis is not null && rowAxis.Values.Count != rows) { throw new ArgumentException("Row axis count must match rows.", nameof(rowAxis)); }
         if (columnAxis is not null && columnAxis.Values.Count != columns) { throw new ArgumentException("Column axis count must match columns.", nameof(columnAxis)); }
+        if (!Enum.IsDefined(headerKind) || (headerKind == TableHeaderKind.Count && rows != 1 && columns != 1))
+        {
+            throw new ArgumentException("Count headers require a one-dimensional table.", nameof(headerKind));
+        }
 
         Name = name;
         Offset = offset;
@@ -28,6 +34,7 @@ public sealed class Unsigned16Table
         Description = description;
         ValueName = valueName;
         AxisQualification = axisQualification;
+        HeaderKind = headerKind;
         ByteLength = checked(rows * columns * sizeof(ushort));
         _ = checked(offset + ByteLength);
     }
@@ -44,6 +51,8 @@ public sealed class Unsigned16Table
     public string Description { get; }
     public string ValueName { get; }
     public string AxisQualification { get; }
+    public TableHeaderKind HeaderKind { get; }
+    public int HeaderByteLength => HeaderKind == TableHeaderKind.Count ? 2 : 4;
     public int ByteLength { get; }
     public decimal Maximum => Decode(ushort.MaxValue);
     public decimal Decode(ushort raw) => (decimal)raw * Numerator / Denominator;

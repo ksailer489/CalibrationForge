@@ -26,6 +26,146 @@ public class BinEditorTests
     private static ExperimentalBinProfile Profile(byte[] bytes) =>
         new("Independent fixture", bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)), Table);
 
+    private static readonly Unsigned16Table FuelTable = new("Synthetic fuel reference", 22, 3, 1, 1, 2048, "AFR",
+        headerKind: TableHeaderKind.Count);
+
+    private static byte[] MultiTableFixture()
+    {
+        var bytes = Enumerable.Repeat((byte)0xA5, 32).ToArray();
+        Fixture().CopyTo(bytes, 0);
+        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(20), 3);
+        ushort[] values = [28894, 24576, 18432];
+        for (var index = 0; index < values.Length; index++)
+        {
+            BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(22 + index * 2), values[index]);
+        }
+        return bytes;
+    }
+
+    private static ExperimentalBinProfile MultiTableProfile(byte[] bytes) =>
+        new("Independent multi-table fixture", bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)), Table,
+            additionalTables: [FuelTable]);
+
+    [Fact]
+    public void AdditionalTableRequiresOptInAndCannotBeReplacedByAnArbitraryDefinition()
+    {
+        var bytes = MultiTableFixture();
+        var editor = new BinImageEditor(bytes, MultiTableProfile(bytes));
+        Assert.Equal(14.1083984375m, editor.Read(FuelTable, 0, 0));
+        Assert.Equal(12m, editor.Read(FuelTable, 1, 0));
+        Assert.False(editor.AdditionalTableEditsEnabled);
+        Assert.Throws<InvalidOperationException>(() => editor.Edit(FuelTable, 0, 0, 14));
+        Assert.False(editor.CanUndo);
+        Assert.Equal(bytes, editor.ExportImage());
+        editor.AdditionalTableEditsEnabled = true;
+        editor.Edit(FuelTable, 0, 0, 14.000244140625m);
+        var changed = editor.ExportImage();
+        Assert.Equal((byte)0x70, changed[22]);
+        Assert.Equal((byte)0x01, changed[23]);
+        Assert.Equal(14.00048828125m, editor.Read(FuelTable, 0, 0));
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            if (index is not 22 and not 23) { Assert.Equal(bytes[index], changed[index]); }
+        }
+        var arbitrary = new Unsigned16Table("Not registered", FuelTable.Offset, 3, 1, 1, 2048, "AFR");
+        Assert.Throws<ArgumentException>(() => editor.Read(arbitrary, 0, 0));
+        Assert.Throws<ArgumentException>(() => editor.Edit(arbitrary, 0, 0, 12));
+        Assert.Equal(3.859375m, editor.Read(0, 1));
+        Assert.Equal(bytes, editor.CopyOriginal());
+    }
+
+    [Fact]
+    public void ProfilesRequireEveryHeaderAndRejectOverlappingDefinitions()
+    {
+        var bytes = MultiTableFixture();
+        bytes[21] = 4;
+        Assert.Null(new BinImageEditor(bytes, MultiTableProfile(bytes)).Profile);
+        bytes = MultiTableFixture()[..26];
+        Assert.Null(new BinImageEditor(bytes, MultiTableProfile(bytes)).Profile);
+        var overlap = new Unsigned16Table("Overlapping header", 18, 1, 1, 1, 1, "raw", headerKind: TableHeaderKind.Count);
+        Assert.Throws<ArgumentException>(() => new ExperimentalBinProfile("Overlap", 32, "", Table, additionalTables: [overlap]));
+        Assert.Throws<ArgumentException>(() => new Unsigned16Table("Invalid count", 22, 2, 2, 1, 1, "raw",
+            headerKind: TableHeaderKind.Count));
+    }
+
+    [Fact]
+    public void MultiTableRevertAndHistoryAreAtomicAndTrackTheSavedBaseline()
+    {
+        var bytes = MultiTableFixture();
+        var profile = MultiTableProfile(bytes);
+        var editor = new BinImageEditor(bytes, profile) { AdditionalTableEditsEnabled = true };
+        editor.Edit(0, 1, 4);
+        editor.Edit(FuelTable, 2, 0, 10);
+        var changed = editor.ExportImage();
+        editor.MarkSaved(changed);
+        editor.AdditionalTableEditsEnabled = false;
+        Assert.Throws<InvalidOperationException>(() => editor.Edit(FuelTable, 2, 0, 11));
+        editor.RevertAll();
+        Assert.Equal(bytes, editor.ExportImage());
+        Assert.True(editor.IsDirty);
+        editor.Undo();
+        Assert.Equal(changed, editor.ExportImage());
+        Assert.False(editor.IsDirty);
+        editor.Undo();
+        Assert.Equal(9m, editor.Read(FuelTable, 2, 0));
+        Assert.Equal(4m, editor.Read(0, 1));
+        editor.Redo();
+        Assert.False(editor.IsDirty);
+        editor.Redo();
+        Assert.Equal(bytes, editor.ExportImage());
+        Assert.Null(new BinImageEditor(changed, profile).Profile);
+    }
+
+    [Fact]
+    public void TableSelectionKeepsHiddenChangesAndHistoryAndClearsStaleCellSelection()
+    {
+        var bytes = MultiTableFixture();
+        var model = new BinEditorViewModel(new BinWorkspace(MultiTableProfile(bytes)));
+        model.Load("multi.bin", bytes, false);
+        model.SelectedCell = model.Cells[1];
+        var dwellCell = model.SelectedCell;
+        model.ValueText = "4";
+        model.Apply();
+        model.SelectedTable = FuelTable;
+        Assert.Null(model.SelectedCell);
+        Assert.Equal("", model.ValueText);
+        Assert.Equal(3, model.Rows.Count);
+        Assert.Single(model.ColumnHeaders);
+        model.SelectedCell = model.Cells[2];
+        Assert.False(model.CanEdit);
+        model.AdditionalTableEditsEnabled = true;
+        model.ValueText = "32";
+        Assert.False(model.CanApply);
+        Assert.Throws<ArgumentOutOfRangeException>(model.Apply);
+        model.ValueText = "10";
+        model.Apply();
+        Assert.Equal(2, model.ChangeCount);
+        Assert.Equal(new[] { Table.Name, FuelTable.Name }, model.ChangedCells.Select(cell => cell.TableName));
+        model.SetBusy(true);
+        Assert.Throws<InvalidOperationException>(() => model.SelectedTable = Table);
+        model.SetBusy(false);
+        model.SelectedTable = Table;
+        Assert.Throws<ArgumentException>(() => model.SelectedCell = model.ChangedCells.Single(cell => cell.TableName == FuelTable.Name));
+        Assert.Same(dwellCell, model.Cells[1]);
+        model.Undo();
+        Assert.Same(dwellCell, Assert.Single(model.ChangedCells));
+        model.Redo();
+        Assert.Equal(2, model.ChangeCount);
+        model.RevertAll();
+        Assert.Empty(model.ChangedCells);
+        Assert.False(model.HasUnsavedChanges);
+        model.Undo();
+        Assert.Equal(2, model.ChangeCount);
+        model.Load("unknown.bin", new byte[8], true);
+        Assert.Empty(model.AvailableTables);
+        Assert.Null(model.SelectedTable);
+        Assert.Empty(model.ChangedCells);
+        model.Load("multi.bin", bytes, false);
+        Assert.Same(Table, model.SelectedTable);
+        Assert.False(model.AdditionalTableEditsEnabled);
+        Assert.False(model.CanUndo);
+    }
+
     [Fact]
     public void CodecReadsRowMajorBigEndianAndQuantizesMidpointsAwayFromZero()
     {

@@ -23,13 +23,26 @@ If an apphost cannot locate the installed runtime despite a working SDK, check `
 
 ## What is supported
 
-- Inspect BIN size/hash; edit one experimental dwell table in an exact-hash public E92 sample. Other images remain read-only.
+- Inspect BIN size/hash; select experimental dwell and stoichiometric air/fuel-ratio tables in an exact-hash public E92 sample. Additional-table editing is off by default and requires explicit opt-in. Other images remain read-only.
 - Analyze simulated/imported offline diagnostic responses; missing responses remain unknown.
 - Replay standard OBD identification and an experimental already-running RAM-reader protocol using explicitly labeled fixtures.
 - Compare two fresh file reads and export an atomic ZIP containing image bytes, hash, and provenance. Consistent file reads do not validate an ECM.
 - Analyze five observed additive calibration checks in one exact public reference. This is not complete checksum/CVN validation or checksum repair.
 
 Edited BIN exports preserve the loaded original and are **not flash-ready**. Definitions and sample provenance are not OEM/hardware validated. The simulator is a separate 16-byte demonstration, not an ECM.
+
+## Experimental E92 definitions
+
+Only the exact original SHA256 in `ExperimentalBinProfile` is recognized; OS number alone is insufficient. Editing, undo/redo, revert-all and export review cover both tables. Disabling additional-table editing prevents new cell edits there, but preserves existing edits, history and export review.
+
+| Definition | Data offset | Layout | Decode |
+|---|---|---|---|
+| Base ignition dwell | `0xAC7F0` | 33 voltage rows × 17 RPM columns; preceding `00110021` header | BE unsigned 16-bit / 128 ms |
+| Stoichiometric air/fuel ratio | `0x842CC` | 17 fuel-alcohol rows × 1 column; preceding `0011` count | BE unsigned 16-bit / 2048 AFR |
+
+Community metadata comes from [UniversalPatcher TableSeek-e92.xml, commit de421df](https://github.com/joukoy/UniversalPatcher/blob/de421df36e195c3afc45e589aea0210afdf6beff/XML/TableSeek-e92.xml). In the exact public sample, the stoichiometry signature occurs at `0x25F98F`, with address-load bytes `7060E0081C6342CA` at `0x25F996`: address `0xE00842CA`, using the `0xE0000000` mapping also evidenced by the dwell references. The count at file offset `0x842CA` is 17; the following 17 words are `0x70DE`, decoding to 14.1083984375 AFR. The upstream stoichiometry entry's E80-base adjustment (`-0xE0800000 + 2`) does **not** apply to this sample. There is no generic address-base correction or signature-based editing of unknown images.
+
+The fuel-alcohol axis follows the community metadata (0 to approximately 99.9985% in 17 points), not an independently validated OEM breakpoint map. Stoichiometry describes fuel composition; it is **not** commanded power enrichment and is not a horsepower adjustment. Spark advance, power enrichment, airflow, cam and torque definitions remain unavailable pending justified locations, formats and axes. No firmware or upstream implementation is included.
 
 ## Structure and regression coverage
 

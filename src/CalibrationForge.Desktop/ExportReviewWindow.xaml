@@ -12,15 +12,13 @@
         </Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,10">
             <TextBlock Text="Original vs edited — review before export" FontSize="22" FontWeight="SemiBold"/>
-            <TextBlock Text="{Binding TableName}" FontSize="18" FontWeight="SemiBold" Margin="0,4"/>
-            <TextBlock Text="{Binding TableMeaning}" TextWrapping="Wrap"/>
-            <TextBlock Text="{Binding ValueCaption}" FontWeight="Bold" Margin="0,4"/>
+            <TextBlock Text="All modified tables, including tables not currently selected" TextWrapping="Wrap" Margin="0,4"/>
             <TextBlock Text="{Binding ChangeSummary}" Margin="0,8" AutomationProperties.AutomationId="BinExportReviewCount"/>
             <TextBlock Text="Checksums unchanged and may be invalid; NOT flash-ready; no physical ECM access or flashing."
                        TextWrapping="Wrap" Foreground="#FFD977" FontWeight="Bold"/>
             <TextBlock Text="NEW file only; loaded original preserved. Units are experimental, not GM-verified."
                        TextWrapping="Wrap" Foreground="#FFD977"/>
-            <TextBlock Text="{Binding AxisQualification}" TextWrapping="Wrap" Foreground="#FFD977"/>
+            <TextBlock Text="Community-derived axes and values; not OEM/hardware validated." TextWrapping="Wrap" Foreground="#FFD977"/>
             <TextBlock Text="Comparison is against the loaded original, not the last export. Zero listed changes means restoration to original bytes."
                        TextWrapping="Wrap" Foreground="#A8B9D0"/>
         </StackPanel>
@@ -29,6 +27,7 @@
                   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto"
                   AutomationProperties.AutomationId="BinExportReviewGrid">
             <DataGrid.Columns>
+                <DataGridTextColumn Header="Table" Binding="{Binding TableName}" Width="240"/>
                 <DataGridTextColumn x:Name="RowAxisColumn" Header="Row index" Binding="{Binding RowLabel}" Width="160"/>
                 <DataGridTextColumn x:Name="ColumnAxisColumn" Header="Column index" Binding="{Binding ColumnLabel}" Width="165"/>
                 <DataGridTextColumn Header="Original" Binding="{Binding Original, StringFormat={}{0:0.#########}}" Width="120"/>

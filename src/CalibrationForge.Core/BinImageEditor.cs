@@ -33,15 +33,24 @@ public sealed class BinImageEditor
     public int Size => original.Length;
     public string OriginalSha256 { get; }
     public ExperimentalBinProfile? Profile { get; }
+    public bool AdditionalTableEditsEnabled { get; set; }
     public bool IsDirty => dirtyBytes != 0;
     public bool DiffersFromOriginal => originalDifferenceBytes != 0;
     public bool CanUndo => historyPosition > 0;
     public bool CanRedo => historyPosition < history.Count;
-    public decimal Read(int row, int column) => RequireTable().Read(image, row, column);
-    public decimal ReadOriginal(int row, int column) => RequireTable().Read(original, row, column);
-    public void Edit(int row, int column, decimal value)
+    public decimal Read(int row, int column) => Read(RequireTable(), row, column);
+    public decimal ReadOriginal(int row, int column) => ReadOriginal(RequireTable(), row, column);
+    public decimal Read(Unsigned16Table table, int row, int column) => RequireTable(table).Read(image, row, column);
+    public decimal ReadOriginal(Unsigned16Table table, int row, int column) => RequireTable(table).Read(original, row, column);
+    public void Edit(int row, int column, decimal value) => Edit(RequireTable(), row, column, value);
+
+    public void Edit(Unsigned16Table table, int row, int column, decimal value)
     {
-        var table = RequireTable();
+        RequireTable(table);
+        if (table != Profile!.Table && !AdditionalTableEditsEnabled)
+        {
+            throw new InvalidOperationException("Additional experimental table editing is disabled. Explicitly enable it before editing.");
+        }
         var offset = table.CellOffset(row, column);
         var encoded = table.Encode(value);
         var before = ReadRaw(offset);
@@ -49,17 +58,21 @@ public sealed class BinImageEditor
     }
 
     public void RevertCell(int row, int column) => Edit(row, column, ReadOriginal(row, column));
+    public void RevertCell(Unsigned16Table table, int row, int column) => Edit(table, row, column, ReadOriginal(table, row, column));
 
     public void RevertAll()
     {
         if (!DiffersFromOriginal) { return; }
-        var table = RequireTable();
+        RequireTable();
         var changes = new List<CellChange>();
-        for (var offset = table.Offset; offset < table.Offset + table.ByteLength; offset += 2)
+        foreach (var table in Profile!.Tables)
         {
-            var before = ReadRaw(offset);
-            var after = BinaryPrimitives.ReadUInt16BigEndian(original.AsSpan(offset, 2));
-            if (before != after) { changes.Add(new CellChange(offset, before, after)); }
+            for (var offset = table.Offset; offset < table.Offset + table.ByteLength; offset += 2)
+            {
+                var before = ReadRaw(offset);
+                var after = BinaryPrimitives.ReadUInt16BigEndian(original.AsSpan(offset, 2));
+                if (before != after) { changes.Add(new CellChange(offset, before, after)); }
+            }
         }
         Apply(changes.ToArray());
     }
@@ -80,10 +93,9 @@ public sealed class BinImageEditor
 
     public byte[] ExportImage()
     {
-        var table = Profile?.Table;
         for (var i = 0; i < image.Length; i++)
         {
-            if (image[i] != original[i] && (table is null || i < table.Offset || i >= table.Offset + table.ByteLength))
+            if (image[i] != original[i] && (Profile is null || !Profile.Tables.Any(table => i >= table.Offset && i < table.Offset + table.ByteLength)))
             {
                 throw new InvalidOperationException("Image contains a change outside the allowed table cells.");
             }
@@ -142,4 +154,12 @@ public sealed class BinImageEditor
     }
 
     private Unsigned16Table RequireTable() => Profile?.Table ?? throw new InvalidOperationException("Unknown BIN is read-only; no verified sample mapping.");
+
+    private Unsigned16Table RequireTable(Unsigned16Table table)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        RequireTable();
+        if (!Profile!.Tables.Contains(table)) { throw new ArgumentException("Table is not part of the recognized profile.", nameof(table)); }
+        return table;
+    }
 }

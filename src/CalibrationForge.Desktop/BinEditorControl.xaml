@@ -69,6 +69,13 @@
                     </StackPanel>
                 </ScrollViewer>
             </Expander>
+            <ComboBox ItemsSource="{Binding AvailableTables}" SelectedItem="{Binding SelectedTable}"
+                      DisplayMemberPath="Name" IsEnabled="{Binding CanSelectTable}" Margin="0,6,0,2"
+                      AutomationProperties.AutomationId="BinTableSelector" AutomationProperties.Name="Calibration table"/>
+            <CheckBox Content="Enable additional experimental table editing (off by default)"
+                      IsChecked="{Binding AdditionalTableEditsEnabled}" IsEnabled="{Binding CanEnableAdditionalTableEdits}"
+                      AutomationProperties.AutomationId="BinAdditionalTableEdits"
+                      ToolTip="Fuel reference values are not power-enrichment targets. Disabling preserves existing edits and undo history."/>
             <TextBlock Text="{Binding TableName}" FontSize="18" FontWeight="SemiBold" Margin="0,6,0,2"
                        AutomationProperties.AutomationId="BinTableNameText"/>
             <TextBlock Text="{Binding TableMeaning}" TextWrapping="Wrap" AutomationProperties.AutomationId="BinTableMeaningText"/>
