@@ -1,0 +1,100 @@
+<UserControl x:Class="CalibrationForge.Desktop.DiagnosticsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#101827" Foreground="#E5EDF8">
+    <Grid Margin="0,12,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="Analyze simulated or captured responses · no live scan or code clearing" Foreground="#A8B9D0"/>
+        <WrapPanel Grid.Row="1" Margin="0,8,0,2">
+            <Button Content="Load example faults" AutomationProperties.AutomationId="DiagnosticsDemoButton"
+                    IsEnabled="{Binding CanLoad}" Click="Demo_Click" Background="#197F83"/>
+            <Button Content="Import capture..." AutomationProperties.AutomationId="DiagnosticsImportButton"
+                    IsEnabled="{Binding CanLoad}" Click="Import_Click"/>
+            <Button Content="Export report..." AutomationProperties.AutomationId="DiagnosticsExportButton"
+                    IsEnabled="{Binding CanExport}" Click="Export_Click"/>
+            <Button Content="Cancel" AutomationProperties.AutomationId="DiagnosticsCancelButton"
+                    IsEnabled="{Binding IsBusy}" Click="Cancel_Click"/>
+        </WrapPanel>
+        <Border Grid.Row="2" Background="#1B293D" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="{Binding Source}" AutomationProperties.AutomationId="DiagnosticsSourceText"
+                           Foreground="#FFD977" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding CaptureTime, StringFormat='Capture time: {0}'}" Foreground="#A8B9D0" Margin="0,4,0,6"/>
+                <WrapPanel>
+                    <TextBlock Text="Controller:" VerticalAlignment="Center" Margin="0,0,12,8"/>
+                    <ComboBox ItemsSource="{Binding Modules}" SelectedItem="{Binding SelectedModule}"
+                              DisplayMemberPath="Label" MinWidth="250" Margin="0,0,18,8"
+                              IsEnabled="{Binding CanLoad}" AutomationProperties.AutomationId="DiagnosticsModules"/>
+                    <TextBlock Text="Check-engine light:" VerticalAlignment="Center" Margin="0,0,10,8"/>
+                    <TextBlock Text="{Binding LampStatus}" FontWeight="Bold" FontSize="20" Margin="0,0,0,8"
+                               AutomationProperties.AutomationId="DiagnosticsLampText"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding Coverage}" Foreground="#A8B9D0"/>
+            </StackPanel>
+        </Border>
+        <Grid Grid.Row="3" MinHeight="140">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <TextBlock Text="{Binding CodeSummary}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Codes}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
+                          GridLinesVisibility="None" FontSize="13"
+                          AutomationProperties.AutomationId="DiagnosticsCodesGrid">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Code" Binding="{Binding Code}" Width="75"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                        <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*" MinWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <TextBlock Text="{Binding MonitorSummary}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Monitors}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
+                          GridLinesVisibility="None" FontSize="13"
+                          AutomationProperties.AutomationId="DiagnosticsReadinessGrid">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Monitor" Binding="{Binding Name}" Width="*" MinWidth="140">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Readiness" Binding="{Binding Status}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+        <Expander Grid.Row="4" Header="What these results mean / capture format" Foreground="#A8B9D0" Margin="0,12,0,8">
+            <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Stored codes are confirmed faults. Pending codes have not yet met confirmation criteria. Permanent codes can persist until the controller verifies the repair. A description identifies a detected condition, not its root cause." Margin="0,6,0,8"/>
+                    <TextBlock Text="Complete readiness means a supported monitor has run since codes were cleared; it is not a guarantee of vehicle health. Not recorded is different from no faults or not supported." Margin="0,0,0,8"/>
+                    <TextBlock Text="Capture JSON groups classic CAN data frames by controller and request. Requests: 0101 (light/readiness), 03 (stored), 07 (pending), 0A (permanent). Include ISO-TP headers; do not mix controllers. The controller name and timestamp are supplied by the capture, not verified identification." Margin="0,0,0,8"/>
+                    <TextBox Text="{Binding ExampleCapture, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas"
+                             Background="#1B293D" Foreground="#E5EDF8" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Expander>
+        <Border Grid.Row="5" Background="#23334A" CornerRadius="8" Padding="14">
+            <TextBlock Text="{Binding Status}" AutomationProperties.AutomationId="DiagnosticsStatusText"
+                       AutomationProperties.LiveSetting="Polite"/>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,28 @@
+name: Build and verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build, unit tests, and desktop smoke checks
+        shell: pwsh
+        run: .\scripts\Verify.ps1 -ArtifactsPath (Join-Path $env:RUNNER_TEMP 'CalibrationForge')
+      - name: Preserve test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ runner.temp }}\CalibrationForge\TestResults
+          if-no-files-found: ignore
